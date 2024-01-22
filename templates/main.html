@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="kr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>마이 페이보릿 무비|프론트-백엔드 영화 리스트</title>
+    <link rel="icon" href="https://t1.daumcdn.net/thumb/R720x0.fjpg/?fname=http://t1.daumcdn.net/brunch/service/user/8EUf/image/ARvj-54ywpEC6Z9F874q7tT7pOk.jpg">
+    <link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500&display=swap" rel="stylesheet">    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js" integrity="sha384-HwwvtgBNo3bZJJLYd8oVXjrBZt8cqVSpeBNS5n7C8IVInixGAoxmnlMuBnhbgrkm" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+
+    <style>
+        * {
+            font-family: 'Gothic A1', sans-serif;
+
+        }
+
+        .top {
+            width: 100%;
+            height: 200px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: rgb(19, 19, 18);
+            background-color: rgb(240, 237, 58);
+        }
+
+        .movie-poster {
+            width: 200px;
+            height: 200px;
+            margin-left: 30px;
+            margin-top: 30px;
+            border-radius: 10px;
+        }
+
+        .button {
+            align-content: center;
+            display: flex;
+            justify-content: center; /* 가로 방향 가운데 정렬 */
+            align-items: center; /* 세로 방향 가운데 정렬 */
+            margin-bottom: 20px;
+        }
+
+        .wrap-div {
+            display: flex;
+            justify-content: flex-end; /* 가로 방향 우측 정렬 */
+            align-items: center; /* 세로 방향 가운데 정렬 */
+            margin-right: 560px; /* 수정: px 단위로 지정 */
+            margin-bottom: 30px;
+        }
+        
+        #trash-mode-box {
+            background-color: white;
+            color: rgb(67, 224, 20); /* 수정: 글자색 지정 */
+            border: none;
+            font-size: 20px;
+        }
+
+        #update {
+            background-color: rgba(0, 135, 245, 0.842);
+            color : white;
+            border: none;
+
+        }
+
+        .movie-button1{
+            width: 100px;
+            margin-right: 20px;
+        }
+        .movie-button2{
+            width: 100px;
+            margin-left: 20px;
+        }
+
+        .btn-primary.active {
+        background-color: darkblue;
+        }   
+
+        .card-body {
+            margin-left: 70px;
+        }
+
+        .movie-title {
+            margin-top : 30px;
+            margin-bottom: 30px;
+        }
+        .movie-likes{
+            margin-bottom: 30px;
+        }
+        .movie-viewers {
+            margin-bottom: 30px;
+        }
+        .movie-date {
+            margin-bottom: 20px;
+        }
+
+        #card {
+            border-style: solid;
+            border-width: 7px; /* 두께를 조절하려면 이 부분을 조정하세요 */
+            border-radius: 30px;
+        }
+
+    </style>
+    <script>
+        function click1(name) {
+            $.ajax({
+                type : 'POST',
+                url : '/like',
+                data : {'name' : name},
+                success : function(response){
+                    location.reload();
+                }
+            });
+        }
+
+        function click2(name) {
+            $.ajax({
+                type : 'POST',
+                url : '/trash',
+                data : {'name' : name},
+                success : function(response){
+                    location.reload();
+                }
+            });   
+        }
+
+        function sortBy(type) {
+            $.ajax({
+                type: 'GET',
+                url: '/' + type, 
+                data: {},
+                success: function (response) {
+                    window.history.pushState({}, '', '/' + type);
+                    location.reload();
+                }
+            });
+        }
+
+        function trashList() {
+            $.ajax({
+                type: 'GET',
+                url: '/trashList', 
+                data: {},
+                success: function (response) {
+                    console.log('trash이동');
+                    window.location.href = '/trashList';
+                }
+            });
+        }
+
+        function crawling() {
+            $.ajax({
+                type: 'GET',
+                url: '/crawling', 
+                data: {},
+                success: function (response) {
+                    console.log(response['result'])
+                    location.reload();
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <div class="top">
+        <h2>마이 페이보릿 무비</h2>
+        <h5>순위를 매겨봅시다.</h5>
+        <button id="update" type="button" onclick="crawling()">영화 업데이트 하기!!</button>
+    </div>
+
+    <div class="text-center" style="margin: 20px 0; max-width: 540px; margin-left: auto; margin-right: auto;">
+        <div class="btn-group mx-auto" role="group" aria-label="Basic mixed styles example">
+            <button type="button" class="btn btn-primary" id="sorter-likes" onclick="sortBy('likes')">좋아요 순으로 정렬</button>
+            <button type="button" class="btn btn-primary" id="sorter-viewers" onclick="sortBy('people')">누적관객수 순으로 정렬</button>
+            <button type="button" class="btn btn-primary" id="sorter-date" onclick="sortBy('date')">개봉일 순으로 정렬</button>
+        </div>
+    </div>
+    <div class="wrap-div">
+        <button id="trash-mode-box" type="button" onclick="trashList()">휴지통 보기</button>
+    </div>
+
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-12" id="movie-box">
+            {% for movie in movies %}
+                {% set name, people, date, img_url, url, likes = movie['name'], movie['people'], movie['date'], movie['img_url'], movie['url'], movie['likes'] %}
+                <div class="card mb-3 mx-auto" id="card" style="max-width: 540px;">
+                    <div class="row g-0">
+                        <div class="col-md-4">
+                            <img src= {{img_url}} class="movie-poster" alt="img-fluid rounded-start">
+                        </div>
+                        <div class="col-md-8">
+                            <div class="card-body">
+                                <h5 class="movie-title"><a href={{url}} target="_blank">{{ name }}</a></h5>
+                                <p class="movie-likes">좋아요 수 : {{ likes }}</p>
+                                <p class="movie-viewers">누적 관객수 : {{ people }}</p>
+                                <p class="movie-date">개봉일 : {{ date }}</p>
+                            </div>
+                        </div><hr>
+                        <div class="button">
+                            <button class="movie-button1" type="button" onclick="click1('{{ name|e }}')">좋아요!</button>
+                            <div class="vr"></div>
+                            <button class="movie-button2" type="button" onclick="click2('{{ name|e }}')">삭제하기!</button>
+                        </div>
+                    </div>
+                </div>    
+            {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+
+</body>
+</html>
