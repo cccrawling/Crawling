@@ -255,7 +255,10 @@ def crawl_naver_movies():
     url_list = []
     img_list = []
     rank_list = []
-    genre_country_list = []
+    genre_list = []
+    country_list = []
+    runtime_list = []
+    people_list = []
 
     data_list = html_data.find_all('a', class_='fn_tit txt_ellip')
     num = len(data_list)
@@ -283,36 +286,42 @@ def crawl_naver_movies():
             img_url = html_data.find('img')['src']
             img_list.append(img_url)
 
-        bin_list = []
-        remove_list = []
-
-        item_info = html_data.find_all('div', class_='item_info')
-        num = len(item_info)
-
-        # 누적관객수, 평점
-        if num > 0:
-            for i in range(num):
-                if item_info:
-                    rank = item_info[i].text
-                    bin_list.append(rank)
-        else:
-            remove_list.append(name)
-
-        rank_list.append(bin_list)
+        # 관객수, 평점
+        try:
+            item_info = html_data.find_all('div', class_='item_info')
+            
+            people = item_info[0].text.split()[-1]
+            people_list.append(people)
+            
+            rank = item_info[1].text.split()[0]
+            rank_list.append(rank)
+        except:
+            item_info = html_data.find_all('div', class_='info_group')
+            
+            rank = item_info[2].text.split()[1]
+            rank_list.append(rank)
+            
+            people = item_info[3].text.split()[1]
+            people_list.append(people)
 
         # 장르, 국가, 시간
-        temp = []
         info_group_tag = html_data.find('div', class_='info_group')
         info_list = list(info_group_tag.dd)
 
-        temp.append(info_list[0])
+        genre = info_list[0]
         info_list.remove(info_list[0])
 
-        temp.append(info_list[-1])
+        runtime = info_list[-1]
         info_list.remove(info_list[-1])
 
-        temp.append(info_list[1:-1])
-        genre_country_list.append(temp)
+        country = info_list[1]
+
+        if len(country) == 0:
+            country = genre
+            genre = '로맨스'
+        genre_list.append(genre)
+        country_list.append(country)
+        runtime_list.append(runtime)
 
         time.sleep(1)
 
@@ -353,20 +362,22 @@ def crawl_naver_movies():
 
         review_list.append(temp)
     
-    # Clean up rank_list
-    rank_list = [[' '.join(item[0].split()[1:]).lstrip('/ '), item[1].strip()] for item in rank_list if len(item) > 1]
-
+    
+    
     naver_data = {
         'name': name_list,
         'url': url_list,
         'img_url': img_list,
+        'people' : people_list,
         'rank': rank_list,
-        'genre_country': genre_country_list,
+        'genre': genre_list,
+        'country' : country_list,
+        'runtime' : runtime_list,
         'review': review_list
     }
     
     
-    naver_df = pd.DataFrame(naver_data, columns=['name', 'url', 'img_url', 'rank', 'genre_country', 'review'])
+    naver_df = pd.DataFrame(naver_data, columns=['name', 'url', 'img_url', 'people', 'rank', 'genre','country', 'runtime', 'review'])
     naver_df.to_csv('naver_crawling.csv', encoding='utf-8', index=False)
 
 def main():
