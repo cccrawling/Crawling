@@ -418,7 +418,7 @@ def crawl_naver_movies():
         'url': url_list,
         'img_url': img_list,
         'people' : people_list,
-        'rank': rank_list,
+        'score': rank_list,
         'genre': genre_list,
         'country' : country_list,
         'runtime' : runtime_list,
@@ -426,7 +426,7 @@ def crawl_naver_movies():
     }
     
     
-    movies_df = pd.DataFrame(naver_data, columns=['name', 'url', 'img_url', 'people', 'rank', 'genre','country', 'runtime', 'review'])
+    movies_df = pd.DataFrame(naver_data, columns=['name', 'url', 'img_url', 'people', 'score', 'genre','country', 'runtime', 'review'])
     naver_df = movies_df.loc[:,['name', 'review']]
     movies_df.drop(columns=['review'], inplace=True)
     
