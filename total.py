@@ -6,9 +6,26 @@ import re
 import time
 import multiprocessing
 import concurrent.futures
+from pymongo import MongoClient
+
+
+client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
+db = client.movies
+
+# 삭제할 콜렉션 이름 리스트
+collections_to_drop = ['cgv', 'lotte', 'megabox', 'daum', 'naver']  # 삭제할 콜렉션 이름들을 여기에 추가
+
+# 각 콜렉션을 하나씩 삭제
+for collection_name in collections_to_drop:
+    db.drop_collection(collection_name)
+    
 
 
 def get_cgv_reviews():
+    
+    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
+    db = client.movies.cgv
+    
     cgv_review_list = []
     cgv_movie_list = []
     cgv_name_list = []
@@ -55,10 +72,20 @@ def get_cgv_reviews():
         'review': cgv_review_list
     }
     cgv_df = pd.DataFrame(cgv_data)
-    cgv_df.to_csv('cgv_crawling.csv', encoding='utf-8', index=False)
+    
+    df_dict = cgv_df.to_dict(orient='records')
+    
+    # 데이터 삽입
+    db.insert_many(df_dict)
 
 
 def get_daum_reviews():
+    
+    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
+    db = client.movies.daum
+
+    
+    
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36'}
     
     # 다음 상영영화 이름리스트
@@ -125,9 +152,16 @@ def get_daum_reviews():
         'review': review_list
     }
     daum_df = pd.DataFrame(daum_data)
-    daum_df.to_csv('daum_crawling.csv', encoding='utf-8', index=False)
+    df_dict = daum_df.to_dict(orient='records')
+    
+    # 데이터 삽입
+    db.insert_many(df_dict)
 
 def get_lotte_reviews():
+    
+    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
+    db = client.movies.lotte
+    
     movie_code_list = []  # 영화 코드
     name_list = []  # 영화 제목
     review_list = []  # 리뷰 리스트
@@ -173,10 +207,17 @@ def get_lotte_reviews():
         'review': review_list
     }
     lotte_df = pd.DataFrame(lotte_data)
-    lotte_df.to_csv('lotte_crawling.csv', encoding='utf-8', index=False)
+    df_dict = lotte_df.to_dict(orient='records')
+    
+    # 데이터 삽입
+    db.insert_many(df_dict)
 
 
 def get_megabox_reviews():
+    
+    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
+    db = client.movies.megabox
+    
     movie_list = []
     url = "https://www.megabox.co.kr/on/oh/oha/Movie/selectMovieList.do"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -233,16 +274,24 @@ def get_megabox_reviews():
         movie_comments_dict[movie_num]['review'] = all_comments
 
     # Create a DataFrame
-    df = pd.DataFrame.from_dict(movie_comments_dict, orient='index')
-    df.reset_index(inplace=True)
+    megabox_df = pd.DataFrame.from_dict(movie_comments_dict, orient='index')
+    megabox_df.reset_index(inplace=True)
 
     # Reorder columns
-    df = df[['name', 'review']]  # 'index',
-    df.columns = ['name', 'review']  # 'movie_id',
-
-    df.to_csv('mega_crawling.csv', encoding='utf-8', index=False)
+    megabox_df = megabox_df[['name', 'review']]  # 'index',
+    megabox_df.columns = ['name', 'review']  # 'movie_id',
+    
+    df_dict = megabox_df.to_dict(orient='records')
+    
+    # 데이터 삽입
+    db.insert_many(df_dict)
 
 def crawl_naver_movies():
+    
+    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
+    db = client.movies.naver
+
+    
     # 다음에서 상영영화 이름 리스트
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36'}
     data = requests.get('https://search.daum.net/search?w=tot&q=%ED%98%84%EC%9E%AC%EC%83%81%EC%98%81%EC%9E%91&rtmaxcoll=0SP&DA=MOR', headers=headers)
@@ -314,13 +363,13 @@ def crawl_naver_movies():
         runtime = info_list[-1]
         info_list.remove(info_list[-1])
 
-        country = info_list[1]
+        country = info_list[1:-1]
 
         if len(country) == 0:
-            country = genre
+            country = [genre]
             genre = '로맨스'
         genre_list.append(genre)
-        country_list.append(country)
+        country_list.append(country[0])
         runtime_list.append(runtime)
 
         time.sleep(1)
@@ -377,8 +426,14 @@ def crawl_naver_movies():
     }
     
     
-    naver_df = pd.DataFrame(naver_data, columns=['name', 'url', 'img_url', 'people', 'rank', 'genre','country', 'runtime', 'review'])
-    naver_df.to_csv('naver_crawling.csv', encoding='utf-8', index=False)
+    movies_df = pd.DataFrame(naver_data, columns=['name', 'url', 'img_url', 'people', 'rank', 'genre','country', 'runtime', 'review'])
+    naver_df = movies_df.loc[:,['name', 'review']]
+    movies_df.drop(columns=['review'], inplace=True)
+    
+    df_dict = naver_df.to_dict(orient='records')
+    
+    # 데이터 삽입
+    db.insert_many(df_dict)
 
 def main():
     functions = [get_cgv_reviews, get_daum_reviews, get_lotte_reviews, get_megabox_reviews, crawl_naver_movies]
