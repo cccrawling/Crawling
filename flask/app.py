@@ -1,19 +1,22 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_from_directory
 import pandas as pd
 from pymongo import MongoClient
+import os 
 
 client = MongoClient('localhost', 27017)
 db = client.movies.card
 
 app = Flask(__name__)
 
+# @app.route('/')
+# def main():
+#     return render_template('main.html')
 
 # 메인페이지
 @app.route('/')
 def main():
-
     movie_list = list(db.find())
-    msg = '!!영화 업데이트는 매주 수요일입니다!!'
+    msg = '영화 업데이트는 매주 수요일입니다.'
     
     return render_template('main.html', movie_list=movie_list, msg=msg)
 
@@ -21,7 +24,7 @@ def main():
 @app.route('/<sort_type>')
 def sortBy(sort_type):
     
-    msg = '!!영화 업데이트는 매주 수요일입니다!!'
+    msg = '영화 업데이트는 매주 수요일입니다.'
     all_list = list(db.find())
     
     sorted_movies = sorted(all_list, key=lambda x: x[sort_type], reverse=True)
@@ -41,8 +44,14 @@ def like():
 @app.route('/detail/<name>')
 def detail(name):
     info = list(db.find({'name' : name}))
-    
+    print(info[0])
     return render_template('detail.html', info=info[0])
+
+
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 
 if __name__ == '__main__':
