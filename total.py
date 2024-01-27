@@ -7,16 +7,21 @@ import time
 import multiprocessing
 import concurrent.futures
 from pymongo import MongoClient
+from sqlalchemy import create_engine
+
+
+# sql db연결
+con = create_engine("mysql+pymysql://admin:admin12345@movie-db.cte4qk2ucq5d.ap-northeast-2.rds.amazonaws.com:3306/movie")
 
 
 client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
 db = client.movies
 
 # 삭제할 콜렉션 이름 리스트
-collections_to_drop = ['cgv', 'lotte', 'megabox', 'daum', 'naver']  # 삭제할 콜렉션 이름들을 여기에 추가
+collections_list = ['cgv', 'lotte', 'megabox', 'daum', 'naver']  # 삭제할 콜렉션 이름들을 여기에 추가
 
 # 각 콜렉션을 하나씩 삭제
-for collection_name in collections_to_drop:
+for collection_name in collections_list:
     db.drop_collection(collection_name)
     
 
@@ -443,3 +448,57 @@ def main():
         
 if __name__ == "__main__":
     main()
+    
+
+# 다음
+db_dict = list(db['daum'].find())
+daum = pd.DataFrame(db_dict)
+daum.drop(columns='_id', inplace=True)
+
+# cgv
+db_dict = list(db['cgv'].find())
+cgv = pd.DataFrame(db_dict)
+cgv.drop(columns='_id', inplace=True)
+
+# lotte
+db_dict = list(db['lotte'].find())
+lotte = pd.DataFrame(db_dict)
+lotte.drop(columns='_id', inplace=True)
+
+# mega
+db_dict = list(db['mega'].find())
+mega = pd.DataFrame(db_dict)
+mega.drop(columns='_id', inplace=True)
+
+# naver
+db_dict = list(db['naver'].find())
+naver = pd.DataFrame(db_dict)
+naver.drop(columns='_id', inplace=True)
+
+
+# 제목 전처리
+lotte.name = lotte.name.apply(lambda x: ''.join(x.split()))
+mega.name = mega.name.apply(lambda x: ''.join(x.split()))
+cgv.name = cgv.name.apply(lambda x: ''.join(x.split(',')))
+
+# 다음 기준으로 제목 동일한 데이터만 추출                    
+column = list(daum.name.values)
+
+cgv = cgv[cgv['name'].isin(column)]
+mega = mega[mega['name'].isin(column)]
+lotte = lotte[lotte['name'].isin(column)]
+
+# merge
+def merge(df1, df2):
+    merge_df = pd.merge(df1, df2, on='name', suffixes=('_df1', '_df2'))
+    merge_df['review'] = merge_df['review_df1'] + merge_df['review_df2']
+    merge_df = merge_df.drop(['review_df1', 'review_df2'], axis=1)
+    
+    return merge_df
+
+result1 = merge(lotte, cgv)
+result2 = merge(result1, mega)
+result3 = merge(result2, daum)
+result = merge(result3, naver)
+
+result.to_sql('review', con, if_exists='append', index=False)
