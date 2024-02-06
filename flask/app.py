@@ -1,10 +1,10 @@
-from flask import Flask, render_template, request, send_from_directory
+from flask import Flask, jsonify, render_template, request, send_from_directory
 import pandas as pd
 from pymongo import MongoClient
 import os 
 
 client = MongoClient('localhost', 27017)
-db = client.movies.card
+db = client.movies.info
 
 app = Flask(__name__)
 
@@ -13,12 +13,17 @@ app = Flask(__name__)
 #     return render_template('main.html')
 
 # 메인페이지
-@app.route('/')
+@app.route('/main')
 def main():
     movie_list = list(db.find())
-    msg = '영화 업데이트는 매주 수요일입니다.'
+    # msg = '영화 업데이트는 매주 수요일입니다.'
+    movie_list = pd.DataFrame(movie_list)
+    movie_list.drop(columns=['_id'], inplace=True)
+    movie_list = movie_list.loc[movie_list['score'] != '?']
+    movie_list = movie_list.to_dict(orient='records')
     
-    return render_template('main.html', movie_list=movie_list, msg=msg)
+    return jsonify(movie_list)
+    # return render_template('main.html', movie_list=movie_list, msg=msg)
 
 # 정렬
 @app.route('/<sort_type>')

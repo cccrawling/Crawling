@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.sql import text
 from datetime import datetime, timedelta
 import numpy as np
+from pymongo import MongoClient
 
 # 감정분석 모델링 함수
 def process_news_keyword(article):
@@ -50,3 +51,7 @@ def process_news_keyword(article):
 
 
     return article
+
+client = MongoClient('localhost', 27017)
+collection = client.movies.cgv
+print(pd.DataFrame(list(collection.find())))
