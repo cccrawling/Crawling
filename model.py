@@ -2,9 +2,6 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch import nn
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.sql import text
-from datetime import datetime, timedelta
 import numpy as np
 from pymongo import MongoClient
 
@@ -14,6 +11,7 @@ def process_news_keyword(article):
     model = AutoModelForSequenceClassification.from_pretrained("snunlp/KR-FinBert-SC")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
+
     
     # 감성 분석 결과 초기화
     sentiments_list = []
@@ -21,6 +19,7 @@ def process_news_keyword(article):
     review_list = list(article.review.values)
     # 각 제목에 대한 감성 분석 수행
     for review in review_list:
+        print(review)
         temp_sentiment = []
         for text in (review):
             inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
@@ -54,4 +53,12 @@ def process_news_keyword(article):
 
 client = MongoClient('localhost', 27017)
 collection = client.movies.cgv
-print(pd.DataFrame(list(collection.find())))
+a = collection.find_one({'name' : '웡카'})
+review = a['review'][:10]
+
+df = pd.DataFrame()
+df['name'] = ['a', 'b']*5
+df['review'] = review
+
+result = process_news_keyword(df)
+print(result)

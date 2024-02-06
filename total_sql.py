@@ -117,41 +117,37 @@ for code in temp_code_list:
 for a,b in zip(name_list, mp4_list):
     movies_df.loc[movies_df['name']==a, 'mp4_url'] = b
 
+connection = pymysql.connect(
+    host='movie-db.cte4qk2ucq5d.ap-northeast-2.rds.amazonaws.com',
+    user='admin', 
+    passwd='admin12345', 
+    database='movie', 
+    cursorclass=pymysql.cursors.DictCursor)
 
-movies_df = movies_df.to_dict(orient='records')
-# connection = pymysql.connect(
-#     host='movie-db.cte4qk2ucq5d.ap-northeast-2.rds.amazonaws.com',
-#     user='admin', 
-#     passwd='admin12345', 
-#     database='movie', 
-#     cursorclass=pymysql.cursors.DictCursor)
+cursor = connection.cursor()
+sql = "DELETE FROM movie_reviews"
+cursor.execute(sql)
+sql = "DELETE FROM movie_info"
+cursor.execute(sql)
 
-# cursor = connection.cursor()
-# sql = "DELETE FROM movie_reviews"
-# cursor.execute(sql)
-# sql = "DELETE FROM movie_info"
-# cursor.execute(sql)
+for index, row in movies_df.iterrows():
+    sql = "INSERT INTO `movie_info` (`name`, `url`, `img_url`, `people`, `score`, `country`, `runtime`, `mp4_url`) VALUES (%s, %s, %s, %s,%s, %s, %s, %s)"
+    cursor.execute(sql, (row['name'], row['url'], row['img_url'], row['people'], row['score'], row['country'], row['runtime'], row['mp4_url']))
 
-# for index, row in movies_df.iterrows():
-#     sql = "INSERT INTO `movie_info` (`name`, `url`, `img_url`, `people`, `score`, `country`, `runtime`) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-#     cursor.execute(sql, (row['name'], row['url'], row['img_url'], row['people'], row['score'], row['country'], row['runtime']))
-
-# connection.commit()
+connection.commit()
     
     
     
-client = MongoClient('localhost', 27017)
+client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
 db = client.movies
 
 # 삭제할 콜렉션 이름 리스트
-collections_list = ['cgv', 'megabox', 'daum', 'naver','info','reviews']  # 삭제할 콜렉션 이름들을 여기에 추가
+collections_list = ['cgv', 'megabox', 'daum', 'naver']  # 삭제할 콜렉션 이름들을 여기에 추가
  
 # 각 콜렉션을 하나씩 삭제
 for collection_name in collections_list:
     db.drop_collection(collection_name)
 
-collection = db.info
-collection.insert_many(movies_df)
 
 # cgv
 def get_cgv_reviews():
@@ -512,19 +508,17 @@ result.review = result.review.apply(lambda x: [pre(i) for i in x])
 result.review = result.review.apply(lambda x: x[:3])
 result_dict = result.to_dict(orient='records')
 
-collection = db.reviews
-collection.insert_many(result_dict)
 
-# cursor.execute("SELECT `id`, `name` FROM `movie_info`")
-# movie_id_map = {row['name']: row['id'] for row in cursor.fetchall()}
+cursor.execute("SELECT `id`, `name` FROM `movie_info`")
+movie_id_map = {row['name']: row['id'] for row in cursor.fetchall()}
 
-# for review_data in result_dict:
-#     # 해당 리뷰의 영화 ID 가져오기
-#     movie_id = movie_id_map.get(review_data['name'])
-#     for review in review_data['review']:
-#         print(review)
-#         sql = "INSERT INTO `movie_reviews` (`movie_id`, `review`) VALUES (%s, %s)"
-#         cursor.execute(sql, (movie_id, review))
-# connection.commit()
+for review_data in result_dict:
+    # 해당 리뷰의 영화 ID 가져오기
+    movie_id = movie_id_map.get(review_data['name'])
+    for review in review_data['review']:
+        print(review)
+        sql = "INSERT INTO `movie_reviews` (`movie_id`, `review`) VALUES (%s, %s)"
+        cursor.execute(sql, (movie_id, review))
+connection.commit()
 
 
