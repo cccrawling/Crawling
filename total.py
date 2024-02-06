@@ -1,35 +1,110 @@
+import json
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
-import json
 import re
-import time
-import multiprocessing
-import concurrent.futures
 from pymongo import MongoClient
-from sqlalchemy import create_engine
+import pymysql
+import time
 
 
-# sql db연결
-con = create_engine("mysql+pymysql://admin:admin12345@movie-db.cte4qk2ucq5d.ap-northeast-2.rds.amazonaws.com:3306/movie")
+img_list = []
+url_list = []
+name_list = []
+rank_list = []
+date_list = []
+runtime_list = []
+country_list = []
+people_list = []
 
+data = requests.get('http://www.cgv.co.kr/movies/?lt=1&ft=1')
+soup = BeautifulSoup(data.text, 'html.parser')
 
+num = 19
+for i in range(num):
+    soup_filter_top = soup.find_all('div', class_='box-image')[i]
+
+    img_list.append(soup_filter_top.find('img')['src'])
+    url_list.append('http://www.cgv.co.kr' + soup_filter_top.find('a')['href'])
+
+for url in url_list:
+    data = requests.get(url)
+    soup = BeautifulSoup(data.text, 'html.parser')
+
+    name = soup.find(class_='title').find('strong').text
+    name = ' '.join(name.split(', '))
+    name_list.append(name)
+    
+    soup_filter = soup.find('div', class_='spec').find_all('dd')
+    temp = soup_filter[-1].text
+    numbers = ''.join(re.findall(r'\d', temp))
+    
+    if len(numbers) == 8:
+        date_list.append(soup_filter[-1].text)
+        
+        text = soup_filter[-2].text
+        runtime_list.append(text.split(',')[1].strip())
+        country_list.append(text.split(',')[2].strip())
+    else:
+        date_list.append(soup_filter[-2].text)
+        
+        text = soup_filter[-3].text
+        runtime_list.append(text.split(',')[1].strip())
+        country_list.append(text.split(',')[2].strip())
+
+    rank_list.append(soup.find('div', class_='egg-gage small').find(class_="percent").text)
+    people_list.append(soup.find('p', class_='desc').find('em').text)
+
+        
+movie_data = {
+        'name': name_list,
+        'url': url_list,
+        'img_url': img_list,
+        'people' : people_list,
+        'score': rank_list,
+        'date' : date_list,
+        'country' : country_list,
+        'runtime' : runtime_list,
+    }
+    
+    
+movies_df = pd.DataFrame(movie_data, columns=['name', 'url', 'img_url', 'people', 'score','date','country', 'runtime'])
+
+connection = pymysql.connect(
+    host='movie-db.cte4qk2ucq5d.ap-northeast-2.rds.amazonaws.com',
+    user='admin', 
+    passwd='admin12345', 
+    database='movie', 
+    cursorclass=pymysql.cursors.DictCursor)
+
+cursor = connection.cursor()
+sql = "DELETE FROM movie_reviews"
+cursor.execute(sql)
+sql = "DELETE FROM movie_info"
+cursor.execute(sql)
+
+for index, row in movies_df.iterrows():
+    sql = "INSERT INTO `movie_info` (`name`, `url`, `img_url`, `people`, `score`, `country`, `runtime`) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    cursor.execute(sql, (row['name'], row['url'], row['img_url'], row['people'], row['score'], row['country'], row['runtime']))
+
+connection.commit()
+    
+    
+    
 client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
 db = client.movies
 
 # 삭제할 콜렉션 이름 리스트
-collections_list = ['cgv', 'lotte', 'megabox', 'daum', 'naver']  # 삭제할 콜렉션 이름들을 여기에 추가
+collections_list = ['cgv', 'megabox', 'daum', 'naver']  # 삭제할 콜렉션 이름들을 여기에 추가
 
 # 각 콜렉션을 하나씩 삭제
 for collection_name in collections_list:
     db.drop_collection(collection_name)
-    
 
-
+# cgv
 def get_cgv_reviews():
-    
-    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
-    db = client.movies.cgv
+
+    collection = db.cgv
     
     cgv_review_list = []
     cgv_movie_list = []
@@ -52,7 +127,9 @@ def get_cgv_reviews():
         cgv_a_tag = box_image_div.find('a')
         img_tag = box_image_div.find('img')
         name_tag = ','.join(img_tag['alt'][:-4].split())
-        cgv_name_list.append(name_tag)
+        name = ' '.join(name_tag.split(','))
+        cgv_name_list.append(name)
+        
         c_num = re.search(r'\d+', cgv_a_tag['href']).group()
         cgv_movie_list.append(int(c_num))
 
@@ -61,7 +138,7 @@ def get_cgv_reviews():
         temp = []
         for j in range(1, 21):
             payload = {'movieIdx': i, 'pageIndex': j, 'pageSize': cgv_num, 'orderType': 0, 'filterType': 1,
-                       'isTotalCount': False, 'isMyPoint': 'false'}
+                        'isTotalCount': False, 'isMyPoint': 'false'}
             try:
                 response = requests.post(cgv_review_url, json=payload, headers=headers)
                 data = json.loads(response.text)
@@ -77,20 +154,19 @@ def get_cgv_reviews():
         'review': cgv_review_list
     }
     cgv_df = pd.DataFrame(cgv_data)
-    
     df_dict = cgv_df.to_dict(orient='records')
     
     # 데이터 삽입
-    db.insert_many(df_dict)
+    collection.insert_many(df_dict)
+    
+    return 'good'
 
 
+# 다음
 def get_daum_reviews():
-    
-    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
-    db = client.movies.daum
 
-    
-    
+    collection = db.daum
+
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36'}
     
     # 다음 상영영화 이름리스트
@@ -103,7 +179,7 @@ def get_daum_reviews():
     num = len(data_list)
 
     for i in range(num):
-        name_list.append(''.join(data_list[i].text.split()))
+        name_list.append(' '.join(data_list[i].text.split()))
 
     # url -> 다음 리뷰 긁어올때 사용
     url_list = []
@@ -157,80 +233,27 @@ def get_daum_reviews():
         'review': review_list
     }
     daum_df = pd.DataFrame(daum_data)
+
     df_dict = daum_df.to_dict(orient='records')
     
-    # 데이터 삽입
-    db.insert_many(df_dict)
-
-def get_lotte_reviews():
-    
-    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
-    db = client.movies.lotte
-    
-    movie_code_list = []  # 영화 코드
-    name_list = []  # 영화 제목
-    review_list = []  # 리뷰 리스트
-    num = 10  # 한 번에 들어가는 리뷰 개수
-
-    url = 'https://www.lottecinema.co.kr/LCWS/Movie/MovieData.aspx'
-    headers = {"User-Agent": "Mozilla/5.0"}
-    payload = {
-        "paramList": '{"MethodName":"GetMoviesToBe","channelType":"HO","osType":"Chrome","osVersion":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36","multiLanguageID":"KR","division":1,"moviePlayYN":"Y","orderType":"1","blockSize":100,"pageNo":1,"memberOnNo":""}'
-    }
-
-    response = requests.post(url, data=payload, headers=headers)
-    data_list = json.loads(response.text)['Movies']['Items']
-
-    for i in range(len(data_list)):
-        code = data_list[i]['RepresentationMovieCode']
-        name = data_list[i]['MovieNameUS']
-        if code != 'AD':
-            movie_code_list.append(code)
-            name_list.append(name)
-
-    for code in movie_code_list:
-        temp = []
-        for j in range(1, 21):
-            payload = {
-                "paramList": json.dumps({"MethodName": "GetReviews", "channelType": "HO", "osType": "Chrome",
-                                         "osVersion": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                                         "representationMovieCode": code, "memberID": "", "realReviewYN": "Y",
-                                         "sortSeq": 1, "pageNo": j, "pageSize": num})
-            }
-            response = requests.post(url, data=payload, headers=headers)
-            data_list = json.loads(response.text)['TotalReviewItems']['Items']
-            try:
-                for k in range(num):
-                    review = data_list[k]['ReviewText']
-                    temp.append(review)
-            except:
-                break
-        review_list.append(temp)
-
-    lotte_data = {
-        'name': name_list,
-        'review': review_list
-    }
-    lotte_df = pd.DataFrame(lotte_data)
-    df_dict = lotte_df.to_dict(orient='records')
     
     # 데이터 삽입
-    db.insert_many(df_dict)
+    collection.insert_many(df_dict)
+    
+    return 'good'
 
 
+# 메가박스
 def get_megabox_reviews():
+
+    collection = db.megabox
     
-    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
-    db = client.movies.megabox
-    
-    movie_list = []
+    name_list = []
+    code_list = []
     url = "https://www.megabox.co.kr/on/oh/oha/Movie/selectMovieList.do"
     headers = {"User-Agent": "Mozilla/5.0"}
 
-    # 영화별 댓글을 저장할 딕셔너리
-    movie_comments_dict = {}
-
-    for page_number in range(1, 4):
+    for page_number in range(1, 3):
         payload = {
             "currentPage": str(page_number),
             "recordCountPerPage": "20",
@@ -245,14 +268,11 @@ def get_megabox_reviews():
         data = json.loads(response.text)
 
         for movie in data['movieList']:
-            name = movie['movieNm']
-            movie_id = movie['movieNo']
-            movie_list.append(movie_id)
-
-            # Include name in the dictionary
-            movie_comments_dict[movie_id] = {'name': name, 'review': []}
-
-    for movie_num in movie_list:
+            name_list.append(movie['movieNm'])
+            code_list.append(movie['movieNo'])
+            
+    review_list = []  
+    for code in code_list:
         url = "https://www.megabox.co.kr/on/oh/oha/Movie/selectOneLnList.do"
         headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -263,7 +283,7 @@ def get_megabox_reviews():
             payload = {
                 "currentPage": str(page_number),
                 "recordCountPerPage": "10",
-                "movieNo": f"{movie_num}",
+                "movieNo": f"{code}",
                 "onelnEvalDivCd": "",
                 "orderCd": ""
             }
@@ -274,27 +294,26 @@ def get_megabox_reviews():
             # 각 페이지의 댓글을 가져와서 전체 댓글 리스트에 추가
             review = [comment['onelnEvalCn'].replace('\n', '') for comment in data.get('list', [])]
             all_comments.extend(review)
-
-        # Add review and name to the dictionary
-        movie_comments_dict[movie_num]['review'] = all_comments
-
-    # Create a DataFrame
-    megabox_df = pd.DataFrame.from_dict(movie_comments_dict, orient='index')
-    megabox_df.reset_index(inplace=True)
-
-    # Reorder columns
-    megabox_df = megabox_df[['name', 'review']]  # 'index',
-    megabox_df.columns = ['name', 'review']  # 'movie_id',
-    
+            
+        review_list.append(all_comments)
+        
+    megabox_data = {
+            'name': name_list,
+            'review': review_list
+        }
+    megabox_df = pd.DataFrame(megabox_data)
     df_dict = megabox_df.to_dict(orient='records')
     
     # 데이터 삽입
-    db.insert_many(df_dict)
-
-def crawl_naver_movies():
+    collection.insert_many(df_dict)
     
-    client = MongoClient('mongodb://admin:admin12345@10.0.5.126:27017/admin')
-    db = client.movies.naver
+    return 'good'
+
+
+# 네이버버
+def get_naver_reviews():
+
+    collection = db.naver
 
     
     # 다음에서 상영영화 이름 리스트
@@ -302,81 +321,28 @@ def crawl_naver_movies():
     data = requests.get('https://search.daum.net/search?w=tot&q=%ED%98%84%EC%9E%AC%EC%83%81%EC%98%81%EC%9E%91&rtmaxcoll=0SP&DA=MOR', headers=headers)
     html_data = BeautifulSoup(data.text, 'html.parser')
 
-    # name -> 네이버에서 사용
     name_list = []
-    # 네이버에서 기본정보 불러오기(20개(다음에 등록된 이름 기준이라서, 이름 list 바꾸면 더 가져올 수 있을 듯))
     movie_code = []
-    url_list = []
-    img_list = []
-    rank_list = []
-    genre_list = []
-    country_list = []
-    runtime_list = []
-    people_list = []
+
 
     data_list = html_data.find_all('a', class_='fn_tit txt_ellip')
     num = len(data_list)
 
     for i in range(num):
-        name_list.append(''.join(data_list[i].text.split()))
+        name_list.append(' '.join(data_list[i].text.split()))
 
     for name in name_list:
         url = f'https://search.naver.com/search.naver?where=nexearch&sm=top_hty&fbm=0&ie=utf8&query=영화{name}'
-        # url
-        url_list.append(url)
 
         data = requests.get(url)
         html_data = BeautifulSoup(data.text, 'html.parser')
 
         # movie_code
-        code = html_data.find_all('div', class_='button_like _reactionModule')[0]['data-cid']
-        movie_code.append(code)
-
-        # img_url
         try:
-            img_url = html_data.find_all('img', class_='_img')[0]['src']
-            img_list.append(img_url)
+            code = html_data.find_all('div', class_='button_like _reactionModule')[0]['data-cid']
+            movie_code.append(code)
         except:
-            img_url = html_data.find('img')['src']
-            img_list.append(img_url)
-
-        # 관객수, 평점
-        try:
-            item_info = html_data.find_all('div', class_='item_info')
-            
-            people = item_info[0].text.split()[-1]
-            people_list.append(people)
-            
-            rank = item_info[1].text.split()[0]
-            rank_list.append(rank)
-        except:
-            item_info = html_data.find_all('div', class_='info_group')
-            
-            rank = item_info[2].text.split()[1]
-            rank_list.append(rank)
-            
-            people = item_info[3].text.split()[1]
-            people_list.append(people)
-
-        # 장르, 국가, 시간
-        info_group_tag = html_data.find('div', class_='info_group')
-        info_list = list(info_group_tag.dd)
-
-        genre = info_list[0]
-        info_list.remove(info_list[0])
-
-        runtime = info_list[-1]
-        info_list.remove(info_list[-1])
-
-        country = info_list[1:-1]
-
-        if len(country) == 0:
-            country = [genre]
-            genre = '로맨스'
-        genre_list.append(genre)
-        country_list.append(country[0])
-        runtime_list.append(runtime)
-
+            movie_code.append('16051833')
         time.sleep(1)
 
     review_list = []
@@ -420,35 +386,25 @@ def crawl_naver_movies():
     
     naver_data = {
         'name': name_list,
-        'url': url_list,
-        'img_url': img_list,
-        'people' : people_list,
-        'score': rank_list,
-        'genre': genre_list,
-        'country' : country_list,
-        'runtime' : runtime_list,
         'review': review_list
     }
     
-    
-    movies_df = pd.DataFrame(naver_data, columns=['name', 'url', 'img_url', 'people', 'score', 'genre','country', 'runtime', 'review'])
-    naver_df = movies_df.loc[:,['name', 'review']]
-    movies_df.drop(columns=['review'], inplace=True)
-    
+    naver_df = pd.DataFrame(naver_data, columns=['name', 'review'])
     df_dict = naver_df.to_dict(orient='records')
     
     # 데이터 삽입
-    db.insert_many(df_dict)
-
-def main():
-    functions = [get_cgv_reviews, get_daum_reviews, get_lotte_reviews, get_megabox_reviews, crawl_naver_movies]
-
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        executor.map(lambda func: func(), functions)
-        
-if __name__ == "__main__":
-    main()
+    collection.insert_many(df_dict)
     
+    return 'good'
+
+
+a = get_cgv_reviews()
+b = get_daum_reviews()
+c = get_megabox_reviews()
+d = get_naver_reviews()
+
+e = a+b+c+d
+
 
 # 다음
 db_dict = list(db['daum'].find())
@@ -460,15 +416,10 @@ db_dict = list(db['cgv'].find())
 cgv = pd.DataFrame(db_dict)
 cgv.drop(columns='_id', inplace=True)
 
-# lotte
-db_dict = list(db['lotte'].find())
-lotte = pd.DataFrame(db_dict)
-lotte.drop(columns='_id', inplace=True)
-
-# mega
-db_dict = list(db['mega'].find())
-mega = pd.DataFrame(db_dict)
-mega.drop(columns='_id', inplace=True)
+# megabox
+db_dict = list(db['megabox'].find())
+megabox = pd.DataFrame(db_dict)
+megabox.drop(columns='_id', inplace=True)
 
 # naver
 db_dict = list(db['naver'].find())
@@ -476,17 +427,12 @@ naver = pd.DataFrame(db_dict)
 naver.drop(columns='_id', inplace=True)
 
 
-# 제목 전처리
-lotte.name = lotte.name.apply(lambda x: ''.join(x.split()))
-mega.name = mega.name.apply(lambda x: ''.join(x.split()))
-cgv.name = cgv.name.apply(lambda x: ''.join(x.split(',')))
-
 # 다음 기준으로 제목 동일한 데이터만 추출                    
-column = list(daum.name.values)
+column = list(cgv.name.values)
 
-cgv = cgv[cgv['name'].isin(column)]
-mega = mega[mega['name'].isin(column)]
-lotte = lotte[lotte['name'].isin(column)]
+daum = daum[daum['name'].isin(column)]
+naver = naver[naver['name'].isin(column)]
+megabox = megabox[megabox['name'].isin(column)]
 
 # merge
 def merge(df1, df2):
@@ -496,9 +442,33 @@ def merge(df1, df2):
     
     return merge_df
 
-result1 = merge(lotte, cgv)
-result2 = merge(result1, mega)
+result2 = merge(cgv, megabox)
 result3 = merge(result2, daum)
 result = merge(result3, naver)
 
-result.to_sql('review', con, if_exists='append', index=False)
+
+def pre(review):
+    if isinstance(review, str):  # 입력이 문자열인지 확인합니다.
+        filtered_review = re.sub(r"[^a-zA-Z0-9가-힣]", " ", review)
+        return filtered_review
+    else:
+        return ''  # 문자열이 아닌 경우 빈 문자열을 반환합니다.
+
+result.review = result.review.apply(lambda x: [pre(i) for i in x])
+result.review = result.review.apply(lambda x: x[:3])
+result_dict = result.to_dict(orient='records')
+
+
+cursor.execute("SELECT `id`, `name` FROM `movie_info`")
+movie_id_map = {row['name']: row['id'] for row in cursor.fetchall()}
+
+for review_data in result_dict:
+    # 해당 리뷰의 영화 ID 가져오기
+    movie_id = movie_id_map.get(review_data['name'])
+    for review in review_data['review']:
+        print(review)
+        sql = "INSERT INTO `movie_reviews` (`movie_id`, `review`) VALUES (%s, %s)"
+        cursor.execute(sql, (movie_id, review))
+connection.commit()
+
+
