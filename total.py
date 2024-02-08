@@ -56,14 +56,10 @@ for url in url_list:
     rank_list.append(soup.find('div', class_='egg-gage small').find(class_="percent").text)
     people_list.append(int(''.join(soup.find('p', class_='desc').find('em').text.split(','))))
 
-num = len(name_list)
-mp4_url_list = ['0']*num
-        
 movie_data = {
         'name': name_list,
         'url': url_list,
         'img_url': img_list,
-        'mp4_url' : mp4_url_list,
         'people' : people_list,
         'score': rank_list,
         'date' : date_list,
@@ -114,44 +110,29 @@ for code in temp_code_list:
     except:
         mp4_list.append('0')
 
-for a,b in zip(name_list, mp4_list):
-    movies_df.loc[movies_df['name']==a, 'mp4_url'] = b
+df_temp = pd.DataFrame()
+df_temp['name'] = temp_name_list
+df_temp['mp4_url'] = mp4_list
 
+df_t = pd.merge(movies_df, df_temp, on='name', how='left').drop(columns='mp4_url_x')
+df_t.rename(columns={'mp4_url_y' : 'mp4_url'}, inplace=True)
+df_t.mp4_url = df_t.mp4_url.apply(lambda x: '0' if pd.isna(x) else x)
 
-movies_df = movies_df.to_dict(orient='records')
-# connection = pymysql.connect(
-#     host='movie-db.cte4qk2ucq5d.ap-northeast-2.rds.amazonaws.com',
-#     user='admin', 
-#     passwd='admin12345', 
-#     database='movie', 
-#     cursorclass=pymysql.cursors.DictCursor)
-
-# cursor = connection.cursor()
-# sql = "DELETE FROM movie_reviews"
-# cursor.execute(sql)
-# sql = "DELETE FROM movie_info"
-# cursor.execute(sql)
-
-# for index, row in movies_df.iterrows():
-#     sql = "INSERT INTO `movie_info` (`name`, `url`, `img_url`, `people`, `score`, `country`, `runtime`) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-#     cursor.execute(sql, (row['name'], row['url'], row['img_url'], row['people'], row['score'], row['country'], row['runtime']))
-
-# connection.commit()
-    
+df_t = df_t.to_dict(orient='records')
     
     
 client = MongoClient('localhost', 27017)
 db = client.movies
 
 # 삭제할 콜렉션 이름 리스트
-collections_list = ['cgv', 'megabox', 'daum', 'naver','info','reviews']  # 삭제할 콜렉션 이름들을 여기에 추가
+collections_list = ['info', 'cgv', 'daum', 'megabox', 'naver', 'reviews']  # 삭제할 콜렉션 이름들을 여기에 추가
  
 # 각 콜렉션을 하나씩 삭제
 for collection_name in collections_list:
     db.drop_collection(collection_name)
 
 collection = db.info
-collection.insert_many(movies_df)
+collection.insert_many(df_t)
 
 # cgv
 def get_cgv_reviews():
