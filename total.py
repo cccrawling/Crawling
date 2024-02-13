@@ -4,19 +4,26 @@ import requests
 from bs4 import BeautifulSoup
 import re
 from pymongo import MongoClient
-import pymysql
 import time
+from datetime import datetime
+
+
+    
+client = MongoClient('localhost', 27017)
+db = client.movies
+
+# 삭제할 콜렉션 이름 리스트
+collections_list = ['info', 'cgv', 'daum', 'megabox', 'naver', 'reviews', 'upcoming']  # 삭제할 콜렉션 이름들을 여기에 추가
+ 
+# 각 콜렉션을 하나씩 삭제
+for collection_name in collections_list:
+    db.drop_collection(collection_name)
+
 
 
 img_list = []
 url_list = []
-name_list = []
-rank_list = []
-date_list = []
-runtime_list = []
-country_list = []
-people_list = []
-
+items = []
 
 data = requests.get('http://www.cgv.co.kr/movies/?lt=1&ft=1')
 soup = BeautifulSoup(data.text, 'html.parser')
@@ -34,41 +41,55 @@ for url in url_list:
 
     name = soup.find(class_='title').find('strong').text
     name = ' '.join(name.split(', '))
-    name_list.append(name)
     
-    soup_filter = soup.find('div', class_='spec').find_all('dd')
-    temp = soup_filter[-1].text
-    numbers = ''.join(re.findall(r'\d', temp))
+    text = soup.find('div', class_='spec').text
+    text = re.sub(r'\s+', ' ', text).strip()
     
-    if len(numbers) == 8:
-        date_list.append(soup_filter[-1].text)
-        
-        text = soup_filter[-2].text
-        runtime_list.append(text.split(',')[1].strip())
-        country_list.append(text.split(',')[2].strip())
-    else:
-        date_list.append(soup_filter[-2].text)
-        
-        text = soup_filter[-3].text
-        runtime_list.append(text.split(',')[1].strip())
-        country_list.append(text.split(',')[2].strip())
+    director_text = re.search(r'감독 : (.+?) /', text)
+    director = director_text.group(1) if director_text else '0'
+    
+    actors_text = re.search(r'배우 : (.+?) 장르', text)
+    actors = actors_text.group(1) if actors_text else '0'
+    
 
-    rank_list.append(soup.find('div', class_='egg-gage small').find(class_="percent").text)
-    people_list.append(int(''.join(soup.find('p', class_='desc').find('em').text.split(','))))
+    genre_text = re.search(r'장르 : (.+?) /', text)
+    genre = genre_text.group(1) if genre_text else '0'
 
-movie_data = {
-        'name': name_list,
-        'url': url_list,
-        'img_url': img_list,
-        'people' : people_list,
-        'score': rank_list,
-        'date' : date_list,
-        'country' : country_list,
-        'runtime' : runtime_list,
+    info_text = re.search(r'기본 정보 : (.+?) 개봉', text)
+    info = info_text.group(1) if info_text else '0'
+
+    release_date_text = re.search(r'개봉 : (.+)', text)
+    release_date = release_date_text.group(1) if release_date_text else '0'
+    if release_date != '0':
+        release_date = re.search(r'\d{4}\.\d{2}\.\d{2}', release_date).group()
+
+    rank = soup.find('div', class_='egg-gage small').find(class_="percent").text
+    booking_rate = soup.find('strong', class_='percent').find('span').text
+    people = int(''.join(soup.find('p', class_='desc').find('em').text.split(',')))
+    
+    text = soup.find('div', class_='sect-story-movie').text
+    synopsis = re.sub('[\n\xa0\r]', '', text).strip()
+    
+    # 딕셔너리 구성
+    movie_info = {
+        'name' : name,
+        'url' : url,
+        'peolpe' : people,
+        'rank' : rank,
+        'booking_rate' : booking_rate,
+        'director': director,
+        'actors': actors,
+        'genre': genre,
+        'info': info,
+        'date': release_date,
+        'synopsis' : synopsis
     }
-    
-movies_df = pd.DataFrame(movie_data, columns=['name', 'url', 'img_url', 'mp4_url', 'people', 'score','date','country', 'runtime'])
+    items.append(movie_info)
 
+movies_df = pd.DataFrame(items)
+movies_df['img_url'] = img_list
+
+# url
 temp_name_list = []
 temp_code_list = []
 url = "https://www.megabox.co.kr/on/oh/oha/Movie/selectMovieList.do"
@@ -110,30 +131,141 @@ for code in temp_code_list:
     except:
         mp4_list.append('0')
 
-df_temp = pd.DataFrame()
-df_temp['name'] = temp_name_list
-df_temp['mp4_url'] = mp4_list
+temp_items = []
+for name, mp4 in zip(temp_name_list, mp4_list):
+    temp_items.append({
+        'name' : name,
+        'mp4' : mp4
+    })
+num = len(movies_df.name)
 
-df_t = pd.merge(movies_df, df_temp, on='name', how='left').drop(columns='mp4_url_x')
-df_t.rename(columns={'mp4_url_y' : 'mp4_url'}, inplace=True)
-df_t.mp4_url = df_t.mp4_url.apply(lambda x: '0' if pd.isna(x) else x)
+movies_df['mp4_url'] = ['0']*num
 
-df_t = df_t.to_dict(orient='records')
+
+for dict_temp in temp_items:
+    serires =  movies_df[movies_df['name'] == dict_temp['name']]
+
+    if not serires.empty:
+        movies_df.loc[serires.index, 'mp4_url'] = dict_temp['mp4']
+
+df_t = movies_df.to_dict(orient='records')
     
-    
-client = MongoClient('localhost', 27017)
-db = client.movies
-
-# 삭제할 콜렉션 이름 리스트
-collections_list = ['info', 'cgv', 'daum', 'megabox', 'naver', 'reviews']  # 삭제할 콜렉션 이름들을 여기에 추가
- 
-# 각 콜렉션을 하나씩 삭제
-for collection_name in collections_list:
-    db.drop_collection(collection_name)
-
 collection = db.info
 collection.insert_many(df_t)
 
+
+
+def upcoming():
+    items = []
+    name_list = []
+    
+    url = 'https://www.megabox.co.kr/on/oh/oha/Movie/selectMovieList.do'
+    headers = {"User-Agent": "Mozilla/5.0"}
+    for page_number in range(1, 4):
+        payload = {
+            "currentPage": str(page_number),
+            "recordCountPerPage": "20",
+            "pageType": "rfilmDe",
+            "ibxMovieNmSearch": "",
+            "onairYn": "MSC02",
+            "specialType": "",
+            "specialYn": "N"}
+        response = requests.post(url,json=payload, headers=headers)
+        data = json.loads(response.text)
+
+        num = len(data['movieList'])
+        now = datetime.now().strftime('%Y.%m.%d')
+        for i in range(num):
+            filter_movie = data['movieList'][i]
+            start_dt = filter_movie['rfilmDe']
+            name = filter_movie['movieNm']
+            
+            text = filter_movie['movieSynopCn']
+            synopsis = re.sub('[\n\xa0\r]', '', text).strip()
+        
+            if name not in name_list:
+                if start_dt > now:
+                    name_list.append(name)
+                    items.append({
+                        'name' : name,
+                        'date' : start_dt,
+                        'synopsis' : synopsis,
+                        'url' : 'https://www.megabox.co.kr/movie-detail?rpstMovieNo=' + filter_movie['movieNo'],
+                        'img_url' : 'https://www.megabox.co.kr/' + filter_movie['imgPathNm'],
+                        'booking_rate' : filter_movie['boxoBokdRt'],
+                        'code' : filter_movie['movieNo']
+                    })
+                
+                
+    # 동영상 뽑는거
+
+    url = 'https://www.megabox.co.kr/on/oh/oha/Movie/selectMovieStilDetail.do'
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    num = len(items)
+
+    for i in range(num):
+        code = items[i]['code']
+        payload = {
+            'rpstMovieNo' : code
+        }
+
+        response = requests.post(url, json=payload, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        try:
+            mp4 = soup.find('div', class_='swiper-slide').find('source')['src']
+            # mp4_list.append(mp4)
+            items[i]['mp4_url'] = mp4
+
+        except:
+            # mp4_list.append('0')
+            items[i]['mp4_url'] = '0'
+
+    # 세부정보 뽑는거
+
+    url = 'https://www.megabox.co.kr/on/oh/oha/Movie/selectMovieInfo.do'
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+
+    num = len(items)
+
+    for i in range(num):
+        code = items[i]['code']
+        payload = {
+            'rpstMovieNo' : code
+        }
+
+        response = requests.post(url, json=payload, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        soup.find('div', class_='line')
+        
+        filter_soup = soup.find('div', class_='line').find_all('p')
+        director_list = {'감독': 'director', '장르': 'genre_runtime', '등급': 'age', '개봉일': 'date'}
+        temp = []
+        num = len(filter_soup)
+        for j in range(num):
+            type = filter_soup[j].text.split('\xa0: ')
+            target = type[1]
+            temp.append({director_list[type[0]]: target})
+            director_list.pop(type[0])
+
+        if len(director_list) != 0:
+            for key, val in director_list.items():
+                temp.append({val: '0'})
+
+        for temp_dict in temp:
+            for key, val in temp_dict.items():
+                if key != 'date':
+                    items[i][key] = val
+
+    
+    collection = db.upcoming
+    collection.insert_many(items)
+    return 'good'
+    
+    
 # cgv
 def get_cgv_reviews():
 
@@ -430,13 +562,13 @@ def get_naver_reviews():
     
     return 'good'
 
-
+e = upcoming()
 a = get_cgv_reviews()
 b = get_daum_reviews()
 c = get_megabox_reviews()
 d = get_naver_reviews()
 
-e = a+b+c+d
+f = a+b+c+d+e
 
 
 # 다음
