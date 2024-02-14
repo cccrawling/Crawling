@@ -64,6 +64,7 @@ for url in url_list:
         release_date = re.search(r'\d{4}\.\d{2}\.\d{2}', release_date).group()
 
     rank = soup.find('div', class_='egg-gage small').find(class_="percent").text
+    english = soup.find('div', class_='title').find('p').text
     booking_rate = soup.find('strong', class_='percent').find('span').text
     people = int(''.join(soup.find('p', class_='desc').find('em').text.split(',')))
     
@@ -73,6 +74,7 @@ for url in url_list:
     # 딕셔너리 구성
     movie_info = {
         'name' : name,
+        'english_name' : english,
         'url' : url,
         'peolpe' : people,
         'rank' : rank,
@@ -182,7 +184,11 @@ def upcoming():
             
             text = filter_movie['movieSynopCn']
             synopsis = re.sub('[\n\xa0\r]', '', text).strip()
-        
+            synopsis = re.sub('[&#-;]', '', synopsis)
+            try:
+                img_url = 'https://www.megabox.co.kr/' + filter_movie['imgPathNm']
+            except:
+                img_url = '0'
             if name not in name_list:
                 if start_dt > now:
                     name_list.append(name)
@@ -191,7 +197,7 @@ def upcoming():
                         'date' : start_dt,
                         'synopsis' : synopsis,
                         'url' : 'https://www.megabox.co.kr/movie-detail?rpstMovieNo=' + filter_movie['movieNo'],
-                        'img_url' : 'https://www.megabox.co.kr/' + filter_movie['imgPathNm'],
+                        'img_url' : img_url,
                         'booking_rate' : filter_movie['boxoBokdRt'],
                         'code' : filter_movie['movieNo']
                     })
