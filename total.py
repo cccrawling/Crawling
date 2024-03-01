@@ -4,21 +4,21 @@ import requests
 from bs4 import BeautifulSoup
 import re
 from pymongo import MongoClient
+import pymysql
 import time
 from datetime import datetime
+import html
+from boxoffice import boxoffice
 
-
-    
 client = MongoClient('localhost', 27017)
 db = client.movies
 
 # 삭제할 콜렉션 이름 리스트
-collections_list = ['info', 'cgv', 'daum', 'megabox', 'naver', 'reviews', 'upcoming']  # 삭제할 콜렉션 이름들을 여기에 추가
+collections_list = ['cgv', 'megabox', 'daum', 'naver','info','reviews', 'upcoming', 'boxoffice']  # 삭제할 콜렉션 이름들을 여기에 추가
  
 # 각 콜렉션을 하나씩 삭제
 for collection_name in collections_list:
     db.drop_collection(collection_name)
-
 
 
 img_list = []
@@ -64,19 +64,23 @@ for url in url_list:
         release_date = re.search(r'\d{4}\.\d{2}\.\d{2}', release_date).group()
 
     rank = soup.find('div', class_='egg-gage small').find(class_="percent").text
+    if rank == '?':
+        rank = 0
+        
     english = soup.find('div', class_='title').find('p').text
     booking_rate = soup.find('strong', class_='percent').find('span').text
     people = int(''.join(soup.find('p', class_='desc').find('em').text.split(',')))
     
     text = soup.find('div', class_='sect-story-movie').text
     synopsis = re.sub('[\n\xa0\r]', '', text).strip()
+    synopsis = html.unescape(synopsis)
     
     # 딕셔너리 구성
     movie_info = {
         'name' : name,
         'english_name' : english,
         'url' : url,
-        'peolpe' : people,
+        'people' : people,
         'rank' : rank,
         'booking_rate' : booking_rate,
         'director': director,
@@ -88,8 +92,10 @@ for url in url_list:
     }
     items.append(movie_info)
 
+likes = [0]*len(items)
 movies_df = pd.DataFrame(items)
 movies_df['img_url'] = img_list
+movies_df['likes'] = likes
 
 # url
 temp_name_list = []
@@ -183,12 +189,14 @@ def upcoming():
             name = filter_movie['movieNm']
             
             text = filter_movie['movieSynopCn']
-            synopsis = re.sub('[\n\xa0\r]', '', text).strip()
-            synopsis = re.sub('[&#-;]', '', synopsis)
+            synopsis = re.sub(r'[^\w\s]', '', text).strip()
+            synopsis = html.unescape(synopsis)
+            
             try:
                 img_url = 'https://www.megabox.co.kr/' + filter_movie['imgPathNm']
             except:
                 img_url = '0'
+        
             if name not in name_list:
                 if start_dt > now:
                     name_list.append(name)
@@ -198,7 +206,7 @@ def upcoming():
                         'synopsis' : synopsis,
                         'url' : 'https://www.megabox.co.kr/movie-detail?rpstMovieNo=' + filter_movie['movieNo'],
                         'img_url' : img_url,
-                        'booking_rate' : filter_movie['boxoBokdRt'],
+                        'booking_rate' : str(filter_movie['boxoBokdRt']) + '%',
                         'code' : filter_movie['movieNo']
                     })
                 
@@ -221,11 +229,9 @@ def upcoming():
 
         try:
             mp4 = soup.find('div', class_='swiper-slide').find('source')['src']
-            # mp4_list.append(mp4)
             items[i]['mp4_url'] = mp4
 
         except:
-            # mp4_list.append('0')
             items[i]['mp4_url'] = '0'
 
     # 세부정보 뽑는거
@@ -270,8 +276,8 @@ def upcoming():
     collection = db.upcoming
     collection.insert_many(items)
     return 'good'
-    
-    
+
+
 # cgv
 def get_cgv_reviews():
 
@@ -568,13 +574,13 @@ def get_naver_reviews():
     
     return 'good'
 
-e = upcoming()
+q = upcoming()
 a = get_cgv_reviews()
 b = get_daum_reviews()
 c = get_megabox_reviews()
 d = get_naver_reviews()
 
-f = a+b+c+d+e
+e = a+b+c+d+q
 
 
 # 다음
@@ -618,6 +624,7 @@ def merge(df1, df2):
 result2 = merge(cgv, megabox)
 result3 = merge(result2, daum)
 result = merge(result3, naver)
+result.name = result.name.apply(lambda x: re.sub('  ', ' ', x))
 
 
 def pre(review):
@@ -628,22 +635,9 @@ def pre(review):
         return ''  # 문자열이 아닌 경우 빈 문자열을 반환합니다.
 
 result.review = result.review.apply(lambda x: [pre(i) for i in x])
-result.review = result.review.apply(lambda x: x[:3])
 result_dict = result.to_dict(orient='records')
 
 collection = db.reviews
 collection.insert_many(result_dict)
 
-# cursor.execute("SELECT `id`, `name` FROM `movie_info`")
-# movie_id_map = {row['name']: row['id'] for row in cursor.fetchall()}
-
-# for review_data in result_dict:
-#     # 해당 리뷰의 영화 ID 가져오기
-#     movie_id = movie_id_map.get(review_data['name'])
-#     for review in review_data['review']:
-#         print(review)
-#         sql = "INSERT INTO `movie_reviews` (`movie_id`, `review`) VALUES (%s, %s)"
-#         cursor.execute(sql, (movie_id, review))
-# connection.commit()
-
-
+box = boxoffice()
